@@ -53,6 +53,7 @@ const initialForm = {
 export function DashboardClient() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [demoMode, setDemoMode] = useState(false);
+  const [backend, setBackend] = useState("memory");
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState(initialForm);
@@ -69,6 +70,7 @@ export function DashboardClient() {
         if (!active) return;
         setLeads(data.leads);
         setDemoMode(data.demoMode);
+        setBackend(data.backend);
         setLoading(false);
       });
 
@@ -189,8 +191,13 @@ export function DashboardClient() {
           {demoMode && (
             <Alert className="mt-4 flex items-center gap-2">
               <AlertTriangle size={16} />
-              Demo mode: DynamoDB environment variables are not configured.
+              Demo mode: no DynamoDB or Aurora DSQL database environment variables are configured.
             </Alert>
+          )}
+          {!demoMode && (
+            <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-900">
+              Connected database backend: {backend === "dsql" ? "Aurora DSQL" : "Amazon DynamoDB"}.
+            </div>
           )}
           {toast && (
             <div className="mt-4 flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm font-medium text-emerald-900">
@@ -396,7 +403,7 @@ function LeadCard({ lead, onOpen, onStatus }: { lead: Lead; onOpen: () => void; 
             <h3 className="font-bold text-slate-950">{lead.customerName}</h3>
             <Badge tone={lead.temperature === "Hot" ? "red" : lead.temperature === "Warm" ? "amber" : "blue"}>{lead.score}</Badge>
           </div>
-          <p className="mt-2 text-sm text-slate-600">{humanize(lead.serviceType)} • {humanize(lead.urgency)}</p>
+          <p className="mt-2 text-sm text-slate-600">{humanize(lead.serviceType)} / {humanize(lead.urgency)}</p>
           <p className="mt-3 text-xl font-bold text-slate-950">{currency(lead.dealValue)}</p>
           <div className="mt-3 grid gap-2 text-xs text-slate-500">
             <span className="flex items-center gap-1"><Clock size={13} /> Follow-up {lead.followUpDate}</span>

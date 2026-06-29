@@ -4,6 +4,8 @@ Track: **Monetizable B2B App**
 
 AWS Database: **Amazon DynamoDB**
 
+Optional experimental backend: **Amazon Aurora DSQL**
+
 ## Description
 
 TradeFlow Lite is a monetizable B2B app for local contractors. It helps garage door companies, HVAC businesses, roofers, plumbers, electricians, and other service businesses stop losing revenue from missed follow-ups.
@@ -48,8 +50,9 @@ API --> FollowUp[Template Follow-Up Generator]
 - Lucide icons
 - AWS SDK v3
 - Amazon DynamoDB table: `tradeflow-leads`
+- Optional Aurora DSQL tables: `tradeflow_leads` and `tradeflow_activity`
 - Single-table keys: `PK` and `SK`
-- Mock mode when DynamoDB environment variables are missing
+- Mock mode when database environment variables are missing
 - Local TypeScript lead scoring and template-generated follow-up plans
 
 ## Demo Script

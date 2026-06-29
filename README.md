@@ -36,6 +36,7 @@ TradeFlow Lite turns every contractor inquiry into a structured sales opportunit
 - Lucide icons
 - AWS SDK v3
 - Amazon DynamoDB
+- Optional Amazon Aurora DSQL backend
 - Vercel-compatible deployment
 
 ## AWS Database Used
@@ -107,7 +108,31 @@ Never commit `.env.local`.
 
 If these variables are missing, the app runs in mock mode and shows this banner:
 
-> Demo mode: DynamoDB environment variables are not configured.
+> Demo mode: no DynamoDB or Aurora DSQL database environment variables are configured.
+
+### Optional Aurora DSQL Backend
+
+The original hackathon requirement is DynamoDB, so DynamoDB remains the default. Aurora DSQL can be enabled as an optional serverless distributed SQL backend by setting:
+
+```bash
+DATABASE_BACKEND=dsql
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=your_access_key_here
+AWS_SECRET_ACCESS_KEY=your_secret_key_here
+DSQL_CLUSTER_ENDPOINT=your-cluster-id.dsql.us-east-1.on.aws
+DSQL_REGION=us-east-1
+DSQL_DATABASE=postgres
+DSQL_DB_USER=admin
+```
+
+Cost note: Aurora DSQL currently has an AWS Free Tier allowance, but usage above the allowance can create charges. Keep the demo small, monitor AWS Billing, and delete unused clusters.
+
+The app creates these DSQL tables automatically on first use:
+
+```sql
+CREATE TABLE IF NOT EXISTS tradeflow_leads (...);
+CREATE TABLE IF NOT EXISTS tradeflow_activity (...);
+```
 
 ## Local Setup
 
@@ -142,11 +167,38 @@ aws dynamodb create-table \
   --region us-east-1
 ```
 
+## Optional: Create an Aurora DSQL Cluster
+
+AWS CLI is installed on this machine at:
+
+```powershell
+& 'C:\Program Files\Amazon\AWSCLIV2\aws.exe' --version
+```
+
+It is not currently configured in this shell. Configure credentials first:
+
+```powershell
+& 'C:\Program Files\Amazon\AWSCLIV2\aws.exe' configure
+```
+
+Then list or create DSQL clusters:
+
+```powershell
+& 'C:\Program Files\Amazon\AWSCLIV2\aws.exe' dsql list-clusters --region us-east-1
+
+& 'C:\Program Files\Amazon\AWSCLIV2\aws.exe' dsql create-cluster `
+  --no-deletion-protection-enabled `
+  --tags project=tradeflow-lite,purpose=hackathon-demo `
+  --region us-east-1
+```
+
+After creation, copy the DSQL endpoint into `DSQL_CLUSTER_ENDPOINT` and set `DATABASE_BACKEND=dsql` in Vercel Project Settings.
+
 ## Deployment to Vercel
 
 1. Push this repo to GitHub.
 2. Import it into Vercel.
-3. Add the environment variables in Vercel Project Settings.
+3. Add the DynamoDB environment variables in Vercel Project Settings, or the optional DSQL variables if using DSQL.
 4. Deploy.
 
 No paid APIs, AI APIs, authentication, Stripe, custom domain, or external services are required.

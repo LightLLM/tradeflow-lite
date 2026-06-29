@@ -1,5 +1,14 @@
 import { GetCommand, PutCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
-import { dynamoDb, isDemoMode, tableName } from "@/lib/dynamodb";
+import { activeBackend } from "@/lib/database";
+import {
+  insertDsqlActivity,
+  insertDsqlLead,
+  selectDsqlActivity,
+  selectDsqlLead,
+  selectDsqlLeads,
+  updateDsqlLeadStatus,
+} from "@/lib/dsql";
+import { dynamoDb, tableName } from "@/lib/dynamodb";
 import type { ActivityLog, Lead, LeadInput, LeadStatus, Temperature } from "@/lib/types";
 
 const TENANT_PK = "TENANT#demo";
@@ -122,12 +131,17 @@ export async function createActivityLog(leadId: string, type: string, message: s
     createdAt: new Date().toISOString(),
   };
 
-  if (isDemoMode || !dynamoDb) {
+  if (activeBackend === "memory") {
     memoryActivity = [activity, ...memoryActivity];
     return activity;
   }
 
-  await dynamoDb.send(new PutCommand({ TableName: tableName, Item: activityToItem(activity) }));
+  if (activeBackend === "dsql") {
+    await insertDsqlActivity(activity);
+  } else {
+    await dynamoDb?.send(new PutCommand({ TableName: tableName, Item: activityToItem(activity) }));
+  }
+
   return activity;
 }
 
@@ -145,10 +159,12 @@ export async function createLead(input: LeadInput) {
     updatedAt: now,
   };
 
-  if (isDemoMode || !dynamoDb) {
+  if (activeBackend === "memory") {
     memoryLeads = [lead, ...memoryLeads];
+  } else if (activeBackend === "dsql") {
+    await insertDsqlLead(lead);
   } else {
-    await dynamoDb.send(new PutCommand({ TableName: tableName, Item: leadToItem(lead) }));
+    await dynamoDb?.send(new PutCommand({ TableName: tableName, Item: leadToItem(lead) }));
   }
 
   await createActivityLog(lead.leadId, "created", `${lead.customerName} was added as a new lead.`);
@@ -156,11 +172,15 @@ export async function createLead(input: LeadInput) {
 }
 
 export async function listLeads() {
-  if (isDemoMode || !dynamoDb) {
+  if (activeBackend === "memory") {
     return [...memoryLeads].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 
-  const result = await dynamoDb.send(
+  if (activeBackend === "dsql") {
+    return selectDsqlLeads();
+  }
+
+  const result = await dynamoDb?.send(
     new QueryCommand({
       TableName: tableName,
       KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
@@ -168,21 +188,28 @@ export async function listLeads() {
     }),
   );
 
-  return (result.Items ?? []).map(itemToLead).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return (result?.Items ?? []).map(itemToLead).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 export async function getLead(leadId: string) {
-  if (isDemoMode || !dynamoDb) {
+  if (activeBackend === "memory") {
     const lead = memoryLeads.find((item) => item.leadId === leadId);
     return lead
       ? { ...lead, followUpPlan: generateFollowUpPlan(lead), proposalSummary: generateProposalSummary(lead) }
       : null;
   }
 
-  const result = await dynamoDb.send(
+  if (activeBackend === "dsql") {
+    const lead = await selectDsqlLead(leadId);
+    return lead
+      ? { ...lead, followUpPlan: generateFollowUpPlan(lead), proposalSummary: generateProposalSummary(lead) }
+      : null;
+  }
+
+  const result = await dynamoDb?.send(
     new GetCommand({ TableName: tableName, Key: { PK: TENANT_PK, SK: `LEAD#${leadId}` } }),
   );
-  if (!result.Item) return null;
+  if (!result?.Item) return null;
   const lead = itemToLead(result.Item);
   return { ...lead, followUpPlan: generateFollowUpPlan(lead), proposalSummary: generateProposalSummary(lead) };
 }
@@ -190,14 +217,20 @@ export async function getLead(leadId: string) {
 export async function updateLeadStatus(leadId: string, status: LeadStatus) {
   const updatedAt = new Date().toISOString();
 
-  if (isDemoMode || !dynamoDb) {
+  if (activeBackend === "memory") {
     memoryLeads = memoryLeads.map((lead) => (lead.leadId === leadId ? { ...lead, status, updatedAt } : lead));
     const updated = memoryLeads.find((lead) => lead.leadId === leadId) ?? null;
     if (updated) await createActivityLog(leadId, "status_updated", `Status changed to ${status.replaceAll("_", " ")}.`);
     return updated;
   }
 
-  const result = await dynamoDb.send(
+  if (activeBackend === "dsql") {
+    const updated = await updateDsqlLeadStatus(leadId, status, updatedAt);
+    if (updated) await createActivityLog(leadId, "status_updated", `Status changed to ${status.replaceAll("_", " ")}.`);
+    return updated;
+  }
+
+  const result = await dynamoDb?.send(
     new UpdateCommand({
       TableName: tableName,
       Key: { PK: TENANT_PK, SK: `LEAD#${leadId}` },
@@ -209,13 +242,15 @@ export async function updateLeadStatus(leadId: string, status: LeadStatus) {
   );
 
   await createActivityLog(leadId, "status_updated", `Status changed to ${status.replaceAll("_", " ")}.`);
-  return result.Attributes ? itemToLead(result.Attributes) : null;
+  return result?.Attributes ? itemToLead(result.Attributes) : null;
 }
 
 export async function listActivityLogs() {
-  if (isDemoMode || !dynamoDb) return memoryActivity;
+  if (activeBackend === "memory") return memoryActivity;
 
-  const result = await dynamoDb.send(
+  if (activeBackend === "dsql") return selectDsqlActivity();
+
+  const result = await dynamoDb?.send(
     new QueryCommand({
       TableName: tableName,
       KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
@@ -224,7 +259,7 @@ export async function listActivityLogs() {
     }),
   );
 
-  return (result.Items ?? []).map(itemToActivity);
+  return (result?.Items ?? []).map(itemToActivity);
 }
 
 export async function seedDemoLeads() {
